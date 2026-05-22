@@ -1,0 +1,12 @@
+{"version": 2, "width": 81, "height": 56, "timestamp": 1774603083, "idle_time_limit": 5.0, "env": {"SHELL": "/usr/bin/zsh", "TERM": "xterm-256color"}}
+[0.214012, "o", "\u001b[1m\u001b[7m%\u001b[27m\u001b[1m\u001b[0m                                                                                \r \r"]
+[0.215455, "o", "\u001b]2;cmpt201@a0c9eab749db:~/units/04-long-assignments/a11-AbrahamMormontoy/src\u0007\u001b]1;..Mormontoy/src\u0007"]
+[0.219172, "o", "\u001b]7;file://a0c9eab749db/home/cmpt201/units/04-long-assignments/a11-AbrahamMormontoy/src\u001b\\"]
+[0.250998, "o", "\r\u001b[0m\u001b[27m\u001b[24m\u001b[J\u001b[35m[recording] \u001b[34m~/units/04-long-assignments/a11-AbrahamMormontoy/src\u001b[32m❯\u001b[39m \u001b[K"]
+[0.251167, "o", "\u001b[?1h\u001b="]
+[0.25129, "o", "\u001b[?2004h"]
+[0.863264, "i", "n"]
+[0.866882, "o", "n"]
+[0.870887, "o", "\b\u001b[1m\u001b[31mn\u001b[0m\u001b[39m"]
+[0.871227, "o", "\b\u001b[1m\u001b[31mn\u001b[0m\u001b[39m\u001b[92mvim client.c\u001b[39m\u001b[12D"]
+[1.102498, "i", "v"]

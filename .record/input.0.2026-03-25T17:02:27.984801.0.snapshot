@@ -1,0 +1,12 @@
+{"version": 2, "width": 93, "height": 56, "timestamp": 1774483348, "idle_time_limit": 5.0, "env": {"SHELL": "/usr/bin/zsh", "TERM": "xterm-256color"}}
+[0.213282, "o", "\u001b[1m\u001b[7m%\u001b[27m\u001b[1m\u001b[0m                                                                                            \r \r"]
+[0.214543, "o", "\u001b]2;cmpt201@a0c9eab749db:~/units/04-long-assignments/a11-AbrahamMormontoy\u0007\u001b]1;..ahamMormontoy\u0007"]
+[0.217843, "o", "\u001b]7;file://a0c9eab749db/home/cmpt201/units/04-long-assignments/a11-AbrahamMormontoy\u001b\\"]
+[0.249731, "o", "\r\u001b[0m\u001b[27m\u001b[24m\u001b[J\u001b[35m[recording] \u001b[34m~/units/04-long-assignments/a11-AbrahamMormontoy\u001b[32m❯\u001b[39m \u001b[K"]
+[0.249915, "o", "\u001b[?1h\u001b="]
+[0.250066, "o", "\u001b[?2004h"]
+[164.798008, "i", "e"]
+[164.801506, "o", "e"]
+[164.805702, "o", "\b\u001b[1m\u001b[31me\u001b[0m\u001b[39m"]
+[164.806035, "o", "\b\u001b[1m\u001b[31me\u001b[0m\u001b[39m\u001b[92mxit\u001b[39m\b\b\b"]
+[165.047918, "i", "x"]

@@ -1,0 +1,258 @@
+#define _DEFAULT_SOURCE
+#define _POSIX_C_SOURCE 200809L
+
+#include <arpa/inet.h>
+#include <errno.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#define BUF_SIZE 5000
+#define PORT 8000
+#define MAX_MESSAGE_SIZE 1024
+#define MAX_CLIENTS 100
+#define LISTEN_BACKLOG 100
+
+#define handle_error(msg)                                                      \
+  do {                                                                         \
+    perror(msg);                                                               \
+    exit(EXIT_FAILURE);                                                        \
+  } while (0)
+
+// Active clients in the server
+int clients_active[MAX_CLIENTS];
+int clients_active_counter = 0;
+
+int expected_clients = 0;
+int type1_clients = 0;
+
+// Mutex to protect above global state
+pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t type_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// This mutex is to ensure that a thread is broadcasted at a time
+pthread_mutex_t broadcasting_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Client information for the message
+struct client_info {
+  int cfd;
+  uint32_t ip;
+  uint16_t port;
+};
+
+void *handle_client(void *arg) {
+  struct client_info *client = (struct client_info *)arg;
+  int cfd = client->cfd;
+  uint32_t client_ip = client->ip;
+  uint16_t client_port = client->port;
+
+  // Now that the data is copied we can free the structure
+  free(client);
+
+  char buf[BUF_SIZE];
+  ssize_t bytes_read;
+  int buf_len = 0;
+  bool Two_phase_commit = false;
+
+  // This while loop reads the data of the client
+  while ((bytes_read = read(cfd, buf + buf_len, BUF_SIZE - buf_len)) > 0) {
+    buf_len = buf_len + bytes_read;
+
+    // Process all the messages in the buffer and looks for the \n
+    while (buf_len > 0) {
+      int newlineEnd = -1;
+      for (int i = 0; i < buf_len; i++) {
+        if (buf[i] == '\n') {
+          newlineEnd = i;
+          break;
+        }
+      }
+
+      // Make sure the newline is in the message
+      if (newlineEnd == -1) {
+        break;
+      }
+
+      // Two-phase commit protocol, the first character defines if command or
+      // message
+      char msgType = buf[0];
+
+      // Message type
+      if (msgType == 0) {
+        // Buffer for the broadcast
+        char out_buf[BUF_SIZE];
+
+        // Build the buffer with the structure [Type][IP][PORT][MESSAGE \N]
+        out_buf[0] = 0;
+        // Copy IP, PORT AND TEXT MESSAGE with its size
+        memcpy(out_buf + 1, &client_ip, 4);
+        memcpy(out_buf + 5, &client_port, 2);
+        memcpy(out_buf + 7, buf + 1, newlineEnd);
+
+        // Prevent other threads to start a broadcast and access active clients
+        pthread_mutex_lock(&broadcasting_mutex);
+        pthread_mutex_lock(&clients_mutex);
+
+        int out_buf_len = 7 + newlineEnd;
+
+        // Look through all the active clients
+        for (int i = 0; i < clients_active_counter; i++) {
+          int sent = 0;
+          int client_fd = clients_active[i];
+
+          // Make sure that all bytes are sent by writing until the buffer is
+          // over
+          while (sent < out_buf_len) {
+            ssize_t s = write(client_fd, out_buf + sent, out_buf_len - sent);
+            if (s <= 0) {
+              break;
+            }
+            sent = sent + s;
+          }
+        }
+        pthread_mutex_unlock(&clients_mutex);
+        pthread_mutex_unlock(&broadcasting_mutex);
+
+        // Command type
+      } else if (msgType == 1) {
+        if (!Two_phase_commit) {
+          Two_phase_commit = true;
+
+          // Increment the counter of clients
+          pthread_mutex_lock(&type_mutex);
+          type1_clients++;
+
+          if (type1_clients >= expected_clients) {
+            char end_msg[2] = {1, '\n'};
+
+            pthread_mutex_lock(&clients_mutex);
+            for (int i = 0; i < clients_active_counter; i++) {
+              int clients_fd = clients_active[i];
+              write(clients_fd, end_msg, 2);
+              close(clients_fd);
+            }
+            pthread_mutex_unlock(&clients_mutex);
+
+            exit(EXIT_SUCCESS);
+          }
+          pthread_mutex_unlock(&type_mutex);
+        }
+      }
+
+      // Remove msg from the buffer and move the message behind to the front
+      int remainingMsg = buf_len - (newlineEnd + 1);
+      if (remainingMsg > 0) {
+        memmove(buf, buf + newlineEnd + 1, remainingMsg);
+      }
+      // buffer lenght
+      buf_len = remainingMsg;
+    }
+  }
+  // Thread closed
+  close(cfd);
+
+  // Remove the client from the array
+  pthread_mutex_lock(&clients_mutex);
+  for (int i = 0; i < clients_active_counter; i++) {
+    if (clients_active[i] == cfd) {
+      clients_active[i] = clients_active[clients_active_counter - 1];
+      clients_active_counter--;
+      break;
+    }
+  }
+  pthread_mutex_unlock(&clients_mutex);
+
+  return NULL;
+}
+
+int main(int argCounter, char *argMsg[]) {
+  // Make the user input a must to enter the port and number of clients
+  if (argCounter != 3) {
+    // const char *inputPortClient = "Forgot port or number of clients";
+    // write(STDERR_FILENO, inputPortClient, strlen(inputPortClient));
+    printf("%s <port number> <# of clients> \n", argMsg[0]);
+    exit(EXIT_FAILURE);
+  }
+
+  // Signal prevent the crashing of the server when contacting a inactive client
+  signal(SIGPIPE, SIG_IGN);
+
+  // Parse command line
+  int port = atoi(argMsg[1]);
+  expected_clients = atoi(argMsg[2]);
+
+  // Scoket network
+  struct sockaddr_in addr;
+  int sfd;
+
+  sfd = socket(AF_INET, SOCK_STREAM, 0);
+  if (sfd == -1) {
+    handle_error("socket");
+  }
+
+  int opt = 1;
+  if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+    handle_error("setsockopt");
+  }
+
+  // Address structure
+  memset(&addr, 0, sizeof(struct sockaddr_in));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(port);
+  addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+  // Bind the socket to the address
+  if (bind(sfd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) == -1) {
+    handle_error("bind");
+  }
+
+  // Connections
+  if (listen(sfd, LISTEN_BACKLOG) == -1) {
+    handle_error("listen");
+  }
+
+  // Thread for each client
+  for (;;) {
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(struct sockaddr_in);
+
+    int connect_fd = accept(sfd, (struct sockaddr *)&client_addr, &client_len);
+    if (connect_fd == -1) {
+      perror("accept");
+      continue;
+    }
+
+    pthread_mutex_lock(&clients_mutex);
+    if (clients_active_counter < MAX_CLIENTS) {
+      clients_active[clients_active_counter] = connect_fd;
+      clients_active_counter++;
+    } else {
+      close(connect_fd);
+      pthread_mutex_unlock(&clients_mutex);
+      continue;
+    }
+    pthread_mutex_unlock(&clients_mutex);
+
+    struct client_info *args = malloc(sizeof(struct client_info));
+    args->cfd = connect_fd;
+    args->ip = client_addr.sin_addr.s_addr;
+    args->port = client_addr.sin_port;
+
+    pthread_t th;
+    if (pthread_create(&th, NULL, handle_client, args) != 0) {
+      handle_error("pthread_create");
+    }
+    pthread_detach(th);
+  }
+
+  if (close(sfd) == -1) {
+    handle_error("close");
+  }
+  return 0;
+}
